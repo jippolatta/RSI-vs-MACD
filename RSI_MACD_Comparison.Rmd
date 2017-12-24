@@ -1,0 +1,577 @@
+---
+title: "Assignment 2"
+author: "Eoin Flynn"
+date: "14 November 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+\centering
+Bond University\linebreak
+Financial Trading Systems
+
+
+\raggedright
+\clearpage
+\tableofcontents
+\clearpage
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Clear the environment
+rm(list=ls())
+```
+
+
+#Exchange Traded Funds
+ETFs are an investment fund that tracks a particular set of stocks, markets, or index's. They are traded on stock exchanges the same way as a regular security. Most ETFs in Australia are passive, meaning that they simply track the performance of a group of stocks, there are also less common Active ETFs. Fund managers in charge of Active ETFs attempt to outperform the underlying set of securities (ASIC, 2017). For this report we will only be using passive ETFs.\linebreak
+\linebreak
+According to the ETF investment strategy guide published by VanEck Investments, ETFs have five key benefits (VanEck Investments Limited):\linebreak
+1. Liquidity. ETFs are highly liquid instruments meaning they are easy to purchase and sell.\linebreak
+2. Transparency - Investors know exactly which stocks are being held in their portfolios and how each is performing in the market.\linebreak
+3. Low cost - Compared to investing in an actively managed fund, passive ETFs are relatively low cost investments as they only track an index and do not attempt to outperform which lowers the management costs.\linebreak
+4. Flexibility - Since ETFs are traded on a stock exchange such as the ASX, investors can more easily adjust their risk exposure to a certain industry by simply selling their shares.\linebreak
+5. Taxation Advantages - ETFs have lower taxes since they are instruments traded on a stock exchange, as opposed to managed funds.\linebreak 
+
+#Momentum Trading
+Momentum trading has been present in the ASX since its inception and only suffered from a brief suspension during the global financial crisis (Vanstone & Hahn, 2015). Momentum trading suggests that purchasing winning stocks and selling losers will generate a significant positive return (Jegadeesh & Titman, 1993). 
+
+#Strategy
+To test the momentum theory we will use two momentum indicators, Gerald Appeal's moving average convergence divergence (MACD) and J. Welles Wilder's relative strength indicator (RSI). We will begin by analysing each strategy using only a long position with with transaction costs. We will then take the better performing strategy and attempt to optimize it to increase returns. 
+
+##Moving Average Convergence Divergence (MACD)
+The MACD strategy works by subtracting two exponential moving averages (EMAs) from one another and using a third EMA as a signal line. When the MACD line crosses above zero it indicates that in instrument is trending upwards, alternatively when it crosses below zero it indicates that the instrument is trending downwards. Using Quantsrat we can examine if it would be a successful trading strategy to use this information for entry and exit points. We will first test the strategy by only going long when the MACD crosses above zero.
+
+##Relative Strenght Index (RSI)
+The RSI is a measure of the speed and change of an instrument's price movements. The strategy states that when an instrument's RSI is below 30 it is being oversold and its price is expected to increase as it is being undervalued, alternatively when it has an RSI above 70 it is being overbought and its price is expected to drop as it is overvalued. The 70/30 markers can be adjusted to suit different trading strategies but we will use these markers as they were the ones first established by Wilder is his book 'New Concepts in Technical Trading Systems (1978)'. We will calculate RSI over a 14 day period and will long an instrument if its RSI falls below 30 and short if it rises above 70. As with our MACD strategy will only look at going long for our first analysis to obtain a baseline result. 
+
+#Instruments
+Seven different ETFs were used for the analysis in order to rule out any industry specific factors, they are: \linebreak
+IOZ: Tracks the movements of the S&P/ASX 200. This ETF is being used to examine how our trading strategies work on large cap stocks.\linebreak
+MVB: Tracks the MVIS Australian banks index. We are using this ETF to examine the performance of our strategies on Australia's largest banking institutions. \linebreak
+MVR: Tracks the MVIS Australia Energy & Mining Index. This ETF is being used as the energy and mining sector are heavily reliant on commodity prices and will tell us how well our strategies work on this highly volatile market.\linebreak
+QFN: Tracks financial companies in the ASX 200. Where MVB tracks only banks, QFN also tracks insurance companies which make up 10.4% of the total tracked sectors.\linebreak
+QRE: Tracks the resources sector, specifically metals. Since MVR only tracks the mining companies themselves, QRE is being included to introduce exposure the the underlying commodity pricing. \linebreak
+VLC: Tracks the performance of the largest companies in Australia. This ETF is being included to contrast VSO.\linebreak
+VSO: Tracks the performance of the smallest companies in Australia. Since most of the ETFs being used track mainly the larger companies, VSO will demonstrate how the trading strategies perform for small cap stocks.\linebreak
+
+##Transaction Costs
+Since this strategy is being viewed from the perspective of an everyday investor, we will be using transaction costs that mimic what they would be paying in the real world. We have chosen to use Commonwealth Bank's brokerage fee schedule which is as follows: \linebreak
+$10.00 (Up to and including $1,000)\linebreak
+$19.95 (Over $1,000 up to $10,000 (inclusive))\linebreak
+$29.95 (Over $10,000 up to $25,000 (inclusive))\linebreak
+0.12% (Over $25,000)\linebreak
+(Commonwealth Bank of Australia, n.d.)
+\clearpage
+
+#Step 1: Testing initialisation
+In this step we will prepare all the data we will need for the testing
+
+##1A Global Variables
+Define our currency, date range, timezone, and starting capital.
+```{r}
+suppressMessages(library(quantstrat))
+currency('AUD')
+#Set the timezone
+Sys.setenv(TZ='UTC')
+#Set the start, end, and initialisation dates
+start = '2000-01-01'
+end = '2017-12-31'
+init = '1999-12-31'
+date_range = '2000::2017'
+#Create our portfolio and account names
+MACD_port = 'MACD Port'
+MACD_acct = 'MACD Account'
+MACD_strat_name = 'MACD Strategy'
+
+RSI_port = 'RSI Port'
+RSI_acct = 'RSI Account'
+RSI_strat_name = 'RSI Strategy'
+
+BH_port = 'Buy and Hold Portfolio'
+BH_acct = 'Buy and Hold Account'
+#Set our starting capital
+starting_cap = 1000000
+```
+
+##1B Load Data
+Load in the ETF data that was sourced from Bloomberg
+```{r}
+library(INFT361Course)
+#Define our directory
+symbol_directory = 'C:\\Users\\eoinf\\Documents\\ETF (1)\\'
+#symbol_directory = 'D:\\Documents\\ETF\\'
+#Get all symbols in that directory
+symbol_list = GetCourseDirList(symbol_directory)
+
+#Load in each symbol
+for (symbol in symbol_list){
+  symbol_name = symbol
+  LoadCourseFile(symbol_directory, symbol, dates= date_range)
+  #Display which stock has been loaded
+  print(sprintf('%s now loaded', symbol_name))
+  #Define the instrument as a stock
+  stock(symbol_list, currency = 'AUD')
+  
+  symbol = get(symbol)
+}
+```
+
+##1C Create Portfolios and Accounts
+Create our portfolios and accounts
+```{r}
+#Remove any existing stratagies with the same name to avoid errors
+rm.strat(c(MACD_strat_name, RSI_strat_name))
+suppressWarnings(rm("account.MACD Account","portfolio.MACD Port",pos=.blotter))
+suppressWarnings(rm("account.RSI Account","portfolio.RSI Port",pos=.blotter))
+suppressWarnings(rm("account.Buy and Hold Account","portfolio.Buy and Hold Portfolio",pos=.blotter))
+suppressWarnings(rm("order_book.MACD Port",pos=.strategy))
+suppressWarnings(rm("order_book.RSI Port",pos=.strategy))
+suppressWarnings(rm("order_book.Buy and Hold Portfolio",pos=.strategy))
+
+#Create the three portfolios
+initPortf(MACD_port, symbol_list, initDate = init, currency = 'AUD')
+initPortf(RSI_port, symbol_list, initDate = init, currency = 'AUD')
+initPortf(BH_port, symbol_list, initDate = init, currency = 'AUD')
+
+#Create the three accounts
+initAcct(MACD_acct, portfolios = MACD_port, initDate = init, initEq = starting_cap, currency = 'AUD')
+initAcct(RSI_acct, portfolios = RSI_port, initDate = init, initEq = starting_cap, currency = 'AUD')
+initAcct(BH_acct, portfolios = BH_port, initDate = init, initEq = starting_cap, currency = 'AUD')
+
+initOrders(portfolio = MACD_port,initDate = init)
+initOrders(portfolio = RSI_port,initDate = init)
+initOrders(portfolio = BH_port,initDate = init)
+
+#Create the two strategies
+strategy(MACD_strat_name, store = TRUE)
+MACD_strat = getStrategy(MACD_strat_name)
+
+strategy(RSI_strat_name, store = TRUE)
+RSI_strat = getStrategy(RSI_strat_name)
+
+#Verify that the strategies have been created
+summary(MACD_strat)
+summary(RSI_strat)
+```
+
+##1D Global Functions
+Create the functions that will be used for both strategies (Order volume and transaction costs)
+```{r}
+os_naive_order = function (data, timestamp, orderqty, ordertype, orderside, portfolio, account, symbol, ruletype, ..., orderprice){
+  #Format the date-timestamp to be in an xts format
+  date = format(timestamp, '%Y-%m-%d')
+  #Update the portfolio and equity on this date
+  updatePortf(Portfolio = portfolio,Symbol = symbol,Dates = date)
+  updateAcct(account,Dates = date)   
+  updateEndEq(account,Dates = date)
+  #Find currenty position and equity
+  pos = getPosQty(portfolio, Symbol = symbol, Date = date)
+  equity = getEndEq(account, date)
+  
+  #Get the close price of the instrument on this date
+  close_price = getPrice(get(symbol))[date]
+  #How large of a position can be taken using the naive approach
+  max_position = as.numeric(trunc((equity/length(symbols))/close_price))
+  
+  #Only purchase if we have no position
+  if (pos == 0)
+    {
+    os_naive_order = max_position
+  } 
+  else{
+    os_naive_order = 0
+  }
+}
+
+transaction_costs = function(TxnQty, TxnPrice, Symbol){
+  
+  #Find the value of the order
+  order_value = abs(TxnQty) * TxnPrice
+  #Return the transaction costs
+  if(order_value <= 1000)
+    return(-10.00)
+  if(order_value <=10000)
+    return(-19.95)
+  if(order_value <= 25000)
+    return(-29.95)
+  #If greater than 25000
+  return(-0.12/100 * order_value)
+}
+
+
+```
+
+##1E Long Only Indicators, Signals, And Rules
+Create the long entry and exit rules for the two strategy's. The short selling and stop loss rules will be added at a later stage
+```{r}
+#Add the MACD Indicator
+add.indicator(strategy = MACD_strat_name, name = 'MACD',arguments = list(x = quote(Cl(mktdata)), nfast = 14, nslow = 26), label = 'MACD_Column') 
+
+#Add the MACD long entry signal
+add.signal(MACD_strat_name, name= 'sigThreshold', arguments = list(column = 'signal.MACD_Column', relationship='gt', threshold=0, cross=TRUE), label = 'MACD_long_entry')
+#Add the MACD long exit signal
+add.signal(MACD_strat_name, name= 'sigThreshold', arguments = list(column = 'signal.MACD_Column', relationship='lt', threshold=0, cross=TRUE), label = 'MACD_long_exit')
+
+#Add the MACD long entry rule
+add.rule(MACD_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'MACD_long_entry', sigval = TRUE, ordertype = 'market', orderside = 'long', replace = FALSE, prefer = 'Close', TxnFees = 'transaction_costs', orderqty=1000, osFUN='os_naive_order'), type = 'enter', path.dep = TRUE)
+#Add the MACD long exit rule
+add.rule(MACD_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'MACD_long_exit', sigval = TRUE, orderqty = 'all', ordertype = 'market', orderside = 'long', replace = FALSE, prefer = 'Close', TxnFees = 'transaction_costs'), type = 'exit', path.dep = TRUE)
+
+
+#Add the RSI Indicator
+add.indicator(strategy = RSI_strat_name, name = 'RSI', arguments = list(price = quote(Cl(mktdata)), n = 14), label = 'RSI_Column')
+
+#Add the RSI long entry signal
+add.signal(RSI_strat_name, name = 'sigThreshold', arguments = list(threshold = 30, column = 'EMA.RSI_Column', relationship = 'lt', cross = TRUE), label = 'RSI_long_entry')
+#Add the RSI long exit signal
+add.signal(RSI_strat_name, name = 'sigThreshold', arguments = list(threshold = 70, column = 'EMA.RSI_Column', relationship = 'gt', cross = TRUE), label = 'RSI_long_exit')
+
+#Add the RSI long entry rule
+add.rule(RSI_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'RSI_long_entry', sigval = TRUE, ordertype = 'market', orderside = 'long', replace = FALSE, prefer = 'Close', orderqty=1000, osFUN='os_naive_order', TxnFees = 'transaction_costs'), type = 'enter', label = 'long_entry_rule' , path.dep = TRUE)
+#Add the RSI long exit rule
+add.rule(RSI_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'RSI_long_exit', sigval = TRUE, orderqty = 'all', ordertype = 'market', orderside = 'long', replace = FALSE, prefer = 'Close', TxnFees = 'transaction_costs'), type = 'exit', label = 'long_exit_rule' , path.dep = TRUE)
+
+MACD_strat = getStrategy(MACD_strat_name)
+RSI_strat = getStrategy(RSI_strat_name)
+summary(MACD_strat)
+summary(RSI_strat)
+```
+\clearpage
+
+#Step 2: Test Strategies
+In this section we will test the long strategies for both the MACD and RSI indicators
+
+##2A Test Long Only MACD
+Test MACD
+```{r}
+#Apply the strategy
+applyStrategy(strategy = MACD_strat, portfolios = MACD_port, account = MACD_acct, verbose = FALSE)
+#Update the portfolio, account, and equity
+updatePortf(MACD_port)
+updateAcct(MACD_acct)
+updateEndEq(MACD_acct)
+```
+
+##2B Test Long Only RSI
+Test RSI
+```{r}
+#Apply the strategy
+applyStrategy(strategy = RSI_strat, portfolios = RSI_port, account=RSI_acct, verbose = FALSE)
+#Update the portfolio, account, and equity
+updatePortf(RSI_port)
+updateAcct(RSI_acct)
+updateEndEq(RSI_acct)
+```
+\clearpage
+
+#Step 3: Analyse Results
+##3A Compare Long Only Results
+Compare the strategies
+```{r}
+library(PerformanceAnalytics)
+#Find the MACD account equity
+MACD_acct_equity = getAccount(MACD_acct)$summary$End.Eq
+
+#Find the RSI account equity
+RSI_acct_equity = getAccount(RSI_acct)$summary$End.Eq
+#Find the RSI account returns
+RSI_returns = Return.calculate(RSI_acct_equity, 'log')
+#Rename the column head
+colnames(RSI_returns) = 'RSI Strategy'
+#Display the performance tables
+RSI_perf = table.Arbitrary(RSI_returns, metrics=c("Return.cumulative", "Return.annualized","SharpeRatio.annualized","CalmarRatio"),
+                            metricsNames=c("Cumulative Return", "Annualized Return", "Annualized Sharpe Ratio","Calmar Ratio"))
+
+RSI_perf
+
+#Merge the two account equities into one dataframe
+equ = merge(MACD_acct_equity, RSI_acct_equity, all=FALSE)
+#Rename the columns
+colnames(equ) = c('MACD Long Only', 'RSI Long Only')
+#Create an equity table
+plot.zoo(equ,plot.type="single",col=c('forestgreen','darkorange2'),main="Long Only Equity Comparison",xlab="Date",ylab="AUD $")
+#Add a legend
+legend(x="topleft",legend=colnames(equ),col=c('forestgreen','darkorange2'),lty=1)
+
+end_equity = merge(MACD_acct_equity[length(MACD_acct_equity)], RSI_acct_equity[length(RSI_acct_equity)])
+colnames(end_equity) = c('MACD End', 'RSI End')
+MACD_profit = MACD_acct_equity[length(MACD_acct_equity)] - 1000000
+RSI_profit = RSI_acct_equity[length(RSI_acct_equity)] - 1000000
+profits = merge(MACD_profit, RSI_profit)
+colnames(profits) = c('MACD Profit', 'RSI Profit')
+end_equity
+profits
+```
+
+The RSI trading strategy clearly outperforms the MACD from a purely long only approach. Investors would have made 1,611,046 using this approach, opposed to a loss of 705,886. Therefore we will attempt to optimize the RSI strategy.
+\clearpage
+
+#Step 4: Optimize
+To optimize our RSI trading strategy, we will analyse the effect of adding a stop loss order at a specified percentage below our purchase price. Once we have attempted to optimize our strategy we will compare it against the performance of the long only strategy and the performance of a buy and hold portfolio. 
+
+##4A What we are trying to improve
+```{r}
+par(mfrow=c(1,1))
+#Display the maximum adverse excursion and trades for each symbol
+for (symbol in symbol_list){
+  chart.ME(Portfolio = RSI_port, Symbol = symbol, type = 'MAE', scale = 'percent')
+  chart.Posn(RSI_port,Symbol=symbol,type='line', TA = 'add_RSI(n=14)')
+}
+
+#Trade stats for each symbol
+trade_stats = tradeStats(Portfolio=RSI_port)
+#Display results
+t(trade_stats)
+
+```
+
+The RSI trading strategy using a long only approach was incredibly successful overall. There were only four trades with a negative return. This makes it very difficult to optimize the strategy since it performed so well. Of the four trades which had a negative return, three had a maximum adverse excursion of more than 25%. We will therefore attempt to optimize the strategy by adding a stop loss at this level.
+
+##4B Create new account and portfolio
+```{r}
+#Remove the existing strategy and account/portfolios
+rm.strat(RSI_strat_name)
+suppressWarnings(rm("account.RSI Account","portfolio.RSI Port",pos=.blotter))
+suppressWarnings(rm("order_book.RSI Port",pos=.strategy))
+
+#Create the portfolio
+initPortf(RSI_port, symbol_list, initDate = init, currency = 'AUD')
+
+#Create the account
+initAcct(RSI_acct, portfolios = RSI_port, initDate = init, initEq = starting_cap, currency = 'AUD')
+initOrders(portfolio = RSI_port,initDate = init)
+
+#Verify that the strategies have been created
+strategy(RSI_strat_name, store = TRUE)
+RSI_strat = getStrategy(RSI_strat_name)
+summary(RSI_strat)
+```
+
+##4C Create the New Strategy
+Since we removed the strategy in the previous step we now need to recreate it. This is where we add our stop loss to optimize our strategy.
+```{r}
+#Add the RSI Indicator
+add.indicator(strategy = RSI_strat_name, name = 'RSI', arguments = list(price = quote(Cl(mktdata)), n = 14), label = 'RSI_Column')
+
+#Add the RSI long entry signal
+add.signal(RSI_strat_name, name = 'sigThreshold', arguments = list(threshold = 30, column = 'EMA.RSI_Column', relationship = 'lt', cross = TRUE), label = 'RSI_long_entry')
+#Add the RSI long exit signal
+add.signal(RSI_strat_name, name = 'sigThreshold', arguments = list(threshold = 70, column = 'EMA.RSI_Column', relationship = 'gt', cross = TRUE), label = 'RSI_long_exit')
+
+#Add the RSI long entry rule
+add.rule(RSI_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'RSI_long_entry', sigval = TRUE, ordertype = 'market', orderside = 'long', orderset = 'oco_long',replace = FALSE, prefer = 'Close', orderqty=1000, osFUN='os_naive_order', TxnFees = 'transaction_costs'), type = 'enter', label = 'long_entry_rule' , path.dep = TRUE)
+#Add the RSI long exit rule
+add.rule(RSI_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'RSI_long_exit', sigval = TRUE, orderqty = 'all', ordertype = 'market', orderside = 'long', orderset = 'oco_long', replace = FALSE, prefer = 'Close', TxnFees = 'transaction_costs'), type = 'exit', label = 'long_exit_rule' , path.dep = TRUE)
+
+#Add the stoploss rule
+add.rule(RSI_strat_name, name = 'ruleSignal', arguments = list(sigcol = 'RSI_long_entry', sigval = TRUE, replace = FALSE, orderside = 'long', ordertype = 'stoplimit', tmult = TRUE, threshold = .25 , orderqty='all', orderset='oco_long'), type = 'chain', parent = 'long_entry_rule', label = 'stoploss_long', enabled = TRUE)
+
+
+#Verify that the rules have been added
+RSI_strat = getStrategy(RSI_strat_name)
+summary(RSI_strat)
+```
+
+##4D Run the New Strategy
+```{r}
+applyStrategy(strategy = RSI_strat_name, portfolios = RSI_port, account = RSI_acct, verbose = FALSE)
+#Update the portfolio, account, and equity
+updatePortf(RSI_port)
+updateAcct(RSI_acct)
+updateEndEq(RSI_acct)
+```
+\clearpage
+
+#Step 5: Pre-Optimized vs Optimized
+In this section we will compare the returns of the RSI trading strategy before it was optimized to after. We will do this by looking at ending equity, log returns, Sharpe ratios, CAPM, and the Fama French Three factor model.
+
+##5A Equity, Returns, Sharpe Ratios
+```{r}
+#Find the Optimized account equity
+RSI_acct_opt_equity = getAccount(RSI_acct)$summary$End.Eq
+#Find the Optimized account returns
+RSI_opt_returns = Return.calculate(RSI_acct_opt_equity, 'log')
+#Rename the column head
+colnames(RSI_opt_returns) = 'RSI Optimized Strategy'
+#Create the performance table
+RSI_opt_perf = table.Arbitrary(RSI_opt_returns, metrics=c("Return.cumulative", "Return.annualized","SharpeRatio.annualized","CalmarRatio"),
+                            metricsNames=c("Cumulative Return", "Annualized Return", "Annualized Sharpe Ratio","Calmar Ratio"))
+
+#Display both tables
+
+RSI_perf
+RSI_opt_perf
+
+#Create the equity graph
+par(mfrow=c(1,1))
+#Merge the two account equities into one dataframe
+equ = merge(RSI_acct_equity, RSI_acct_opt_equity, all=FALSE)
+#Rename the columns
+colnames(equ) = c('RSI Long Only', 'RSI Optimized')
+#Create an equity table
+plot.zoo(equ,plot.type="single",col=c('darkorange2','forestgreen'),main="Strategy Comparison",xlab="Date",ylab="AUD $")
+#Add a legend
+legend(x="topleft",legend=colnames(equ),col=c('darkorange2','forestgreen'),lty=1)
+
+end_equity = merge(RSI_acct_equity[length(RSI_acct_equity)], RSI_acct_opt_equity[length(RSI_acct_opt_equity)])
+colnames(end_equity) = c('RSI Long End', 'RSI Optimized End')
+RSI_opt_profit = RSI_acct_opt_equity[length(RSI_acct_opt_equity)] - 1000000
+RSI_profits_table = merge(RSI_profit, RSI_opt_profit)
+colnames(RSI_profits_table) = c('RSI Long Profit', 'RSI Opt Profit')
+end_equity
+RSI_profits_table
+```
+
+By adding the stops to our strategy we can see that the overall performance only slightly increases. Ending equity was raised by only 25,391, that is an annualized return of 10.06% compared to the original 9.88%. The strategy's risk adjusted return also increased marginally with the Sharpe ratio now at .34 as opposed to it's original .33.
+
+##5B CAPM and Fama French
+To determine if either strategy has an abnormal return not explained by market factors, we will use the Fama French Three factor model. The model is used to gauge how much of a strategy's performance could be explained by market factors such as investing in big versus small companies, high growth versus low growth, and the market risk premium. If the strategy returns a positive alpha then it is said to be earning excess returns. To test this theory we will use the MRP, SMB, and the HML data directly from Kenneth French's webpage.  
+```{r}
+library(quantmod)
+#Define the directory
+ff_dir = 'C:\\Users\\eoinf\\Documents\\FF3\\'
+#ff_dir = 'D:\\Documents\\FF3\\'
+#Load the dataset
+fama_french = read.csv((paste0(ff_dir, 'FFFactors.csv')))
+#Convert to xts
+fama_french = as.xts(fama_french[,-1], order.by=as.Date(fama_french$dates))
+#Define the index
+index(fama_french) = as.yearmon(index(fama_french))
+
+#Conver both RSI strategies to monthly
+RSI_monthly = monthlyReturn(RSI_acct_equity, type = "arithmetic")*100 
+index(RSI_monthly) = as.yearmon(index(RSI_monthly))
+RSI_opt_monthly = monthlyReturn(RSI_acct_opt_equity, type = "arithmetic")*100 
+index(RSI_opt_monthly) = as.yearmon(index(RSI_opt_monthly))
+
+#Create the RSI and Fama French Merged Tables
+RSI_fama_french = merge(RSI_monthly, fama_french)
+RSI_fama_french = RSI_fama_french[complete.cases(RSI_fama_french),]
+
+RSI_opt_fama_french = merge(RSI_opt_monthly, fama_french)
+RSI_opt_fama_french = RSI_opt_fama_french[complete.cases(RSI_opt_fama_french),]
+
+#Compute the excess returns for both strategies
+RSI_fama_french$RSI_excess = RSI_fama_french$monthly.returns - RSI_fama_french$rf
+RSI_opt_fama_french$RSI_excess = RSI_opt_fama_french$monthly.returns - RSI_fama_french$rf
+
+#Print the head of each column (Should be the same as stops not yet called)
+head(RSI_fama_french)
+head(RSI_opt_fama_french)
+```
+
+##5C CAPM Regression
+We will now perform a CAPM regression to determine if the strategies have an abnormal return.
+```{r}
+#RSI Long CAPM regression
+RSI_capm = lm(RSI_excess ~ mkt.rf, data = RSI_fama_french)
+
+#RSI Optimized CAPM regression
+RSI_opt_capm = lm(RSI_excess ~ mkt.rf, data = RSI_opt_fama_french)
+
+#Print both regressions
+summary(RSI_capm)
+summary(RSI_opt_capm)
+```
+
+Both strategies return a very similar CAPM results. Neither strategy has an alpha value that is statistically different from zero, meaning that neither have an abnormal return. Both strategies also have a similar market beta. The long only and optimized accounts are roughly 60% more sensitive to the market with betas of 1.6314 and 1.6295 respectively. 
+
+##5D Fama French Three Factor Regression
+We will now perform a FF3 regression to determine if the strategies have an abnormal return
+```{r}
+#RSI Long FF3 regression
+RSI_FF3 = lm(RSI_excess ~ mkt.rf + smb + hml, data = RSI_fama_french)
+
+#RSI Optimized FF3 regression
+RSI_opt_FF3 = lm(RSI_excess ~ mkt.rf + smb + hml, data = RSI_opt_fama_french)
+
+#Print both regressions
+summary(RSI_FF3)
+summary(RSI_opt_FF3)
+```
+
+The Fama French regression results are incredibly similar to those of the CAPM. The alpha values are not statistically different from zero and both strategies have a beta of roughly 1.6. There is also no small minus big company or high growth versus low growth effects due to the instruments being used. 
+
+\clearpage
+
+#Step 6: Buy and Hold
+In this section we will create a buy and hold portfolio using the Australia All Ords and compare it to our Optimized RSI Strategy since it had the highest risk adjusted return.
+
+##6A Buy and Hold Portfolio
+In this step we will load in the Buy and Hold Portfolio
+```{r}
+library(INFT361Course)
+library(xts)
+#The portfolio was created in 1C
+#Load in the All Ords
+bh_directory = 'C:\\Users\\eoinf\\Documents\\Index\\'
+#bh_directory = 'D:\\Documents\\All Ords\\'
+bh_symbol = 'XAO.csv'
+LoadCourseIndexFile(bh_directory, bh_symbol, dates = date_range)
+#Define the All Ords as a stock
+stock(bh_symbol, currency = 'AUD')
+
+#Conver to weekly
+bh_object = to.weekly(get(bh_symbol), indexAt = 'endof', drop.time = FALSE, OHLC = TRUE)
+assign(bh_symbol, bh_object)
+#Set the starting parameters
+BH_object = get(bh_symbol)
+
+#Find the start and finishing dates
+first_date = first(time(bh_object))
+last_date = last(time(bh_object))
+
+#Find the close price on the first and last day
+close_price = as.numeric(Cl(bh_object[first_date,]))
+last_close_price = as.numeric(Cl(bh_object[last_date,]))
+
+#Find how much can be bought on the first day
+unit_size = as.numeric(trunc(starting_cap/close_price))
+
+#Create the transactio fees (based off the fees above)
+first_transaction_fee = -0.12/100 * unit_size
+last_transaction_fee = -0.12/100 * unit_size
+
+#Add the transaction for the first day
+addTxn(BH_port, Symbol = bh_symbol, TxnDate = first_date, TxnPrice = close_price, TxnQty = unit_size, TxnFees = first_transaction_fee)
+#Add the transaction for the last day
+addTxn(BH_port, Symbol = bh_symbol, TxnDate = last_date, TxnPrice = last_close_price, TxnQty = -unit_size, TxnFees = last_transaction_fee)
+
+#Update the portfolio and account
+updatePortf(Portfolio = BH_port)
+updateAcct(BH_acct)
+updateEndEq(BH_acct)
+
+#Chart our trades
+chart.Posn(BH_port,Symbol=bh_symbol,type="line")
+```
+
+##6B Buy and Hold Comparison
+We will now calculate the returns on the Buy and Hold Portfolio and compare it to the returns of our Optimized RSI strategy. Since both RSI strategies had identical CAPM and Fama French Regression results we used the strategy with the greatest Sharpe Ratio.
+```{r}
+bh_acct_equity = getAccount(BH_acct)$summary$End.Eq
+bh_returns = Return.calculate(bh_acct_equity, 'log')
+colnames(bh_returns) = 'Buy and Hold'
+bh_perf = table.Arbitrary(bh_returns, metrics=c("Return.cumulative", "Return.annualized","SharpeRatio.annualized","CalmarRatio"),
+                            metricsNames=c("Cumulative Return", "Annualized Return", "Annualized Sharpe Ratio","Calmar Ratio"))
+bh_perf
+RSI_opt_perf
+
+end_equity = merge(RSI_acct_opt_equity[length(RSI_acct_opt_equity)], bh_acct_equity[length(bh_acct_equity)])
+colnames(end_equity) = c('RSI Opt End', 'Buy and Hold End')
+bh_profit = bh_acct_equity[length(bh_acct_equity)] - 1000000
+profits_table = merge(RSI_opt_profit, bh_profit)
+colnames(profits_table) = c('RSI Opt Profit', 'Buy and Hold Profit')
+profits_table
+```
+
+From the results above it is clear that the RSI Optimized Strategy does outperform the All Ords by quite a significant margin. Where the buy and hold account only had a Sharpe ratio of .04, the RSI strategy's was .34. The difference in profits was also quite large. If an investor had of bought and held the All Ords they would of have made a 787,474 dollar profit, that is 848,962 dollars less than the profit generated by our RSI strategy. In conclusion, it is a relatively safe assumption that using the Optimized RSI trading strategy as documented here, would continue to generate returns greater than the market, for investors over the coming years(assuming no major financial crisis). The strategy appears to work incredibly well with a diversified portfolio of ETFs.
+
+#Step 7: References
+  ASIC. (2017, October 16). Exchange traded funds (ETFs). Retrieved from ASIC:           https://www.moneysmart.gov.au/investing/managed-funds/exchange-traded-funds-etfs
+  Commonwealth Bank of Australia. (n.d.). Rates and Fees. Retrieved from Commonwealth Bank of Australia: https://www.commsec.com.au/support/rates-and-fees.html
+  Jegadeesh , N., & Titman, S. (1993). Returns to Buying Winners and Selling Losers: Implications for Stock Market    Efficiency. The Journal of Finance, 65-91.
+  VanEck Investments Limited. (n.d.). A guide to ETF investment strategies. 
+  Vanstone, B. J., & Hahn, T. (2015, April 29). Australian momentum: performance, capacity and the GFC effect. Accounting and Finance, 57(1), 261-287.
+
+
